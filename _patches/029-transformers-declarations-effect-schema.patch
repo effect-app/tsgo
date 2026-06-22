@@ -1,5 +1,5 @@
 diff --git a/internal/transformers/declarations/transform.go b/internal/transformers/declarations/transform.go
-index b6596e0d7..41cf2fc86 100644
+index b6596e0d7..a7cc40133 100644
 --- a/internal/transformers/declarations/transform.go
 +++ b/internal/transformers/declarations/transform.go
 @@ -351,6 +351,7 @@ func (tx *DeclarationTransformer) transformSourceFile(node *ast.SourceFile) *ast
@@ -895,9 +895,9 @@ index b6596e0d7..41cf2fc86 100644
 +
 +func (tx *DeclarationTransformer) createEffectSchemaStaticMembers(classDeclaration *ast.Node) []*ast.Node {
 +	members := []*ast.Node{}
-+	// `identifier` is an `S.Class` static (the facade base is `S.Bottom`, which lacks it);
-+	// carry it so the faceted class type stays equal to the stock `EnhancedClass` one.
-+	tx.addSchemaStaticMember(&members, classDeclaration, "identifier", true)
++	// NOTE: `identifier` (generic `string`) is intentionally NOT emitted here — it lives on the
++	// facade interfaces (OpaqueFacade/OpaqueClassFacade/OpaqueErrorFacadeClass) in effect-app.
++	// Only per-model, precisely-typed statics belong here.
 +	tx.addSchemaStaticMember(&members, classDeclaration, "fields", true)
 +	tx.addSchemaStaticMember(&members, classDeclaration, "mapFields", false)
 +	tx.addSchemaStaticMember(&members, classDeclaration, "to", true)
