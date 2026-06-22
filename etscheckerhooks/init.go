@@ -19,7 +19,7 @@ func init() {
 	// Set the version suffix so that core.Version() reports the effect-app build
 	// as semver build metadata on the upstream 7.x base, e.g. "7.0.0-dev+effect-app.5".
 	// Bump the build counter on each effect-app binary release (gz on effect-app/tsgo).
-	core.SetVersionSuffix("+effect-app.6")
+	core.SetVersionSuffix("+effect-app.7")
 	effectconfigraw.Register()
 	// Register the after check source file callback
 	checker.RegisterAfterCheckSourceFileCallback(afterCheckSourceFile)
