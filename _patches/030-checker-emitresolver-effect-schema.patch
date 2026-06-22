@@ -1,5 +1,5 @@
 diff --git a/internal/checker/emitresolver.go b/internal/checker/emitresolver.go
-index 7bf3719e5..51794253e 100644
+index 7bf3719e5..b4c50f58c 100644
 --- a/internal/checker/emitresolver.go
 +++ b/internal/checker/emitresolver.go
 @@ -12,6 +12,7 @@ import (
@@ -10,7 +10,7 @@ index 7bf3719e5..51794253e 100644
  )
  
  var _ printer.EmitResolver = (*EmitResolver)(nil)
-@@ -1043,6 +1044,253 @@ func (r *EmitResolver) CreateTypeOfExpression(emitContext *printer.EmitContext,
+@@ -1043,6 +1044,270 @@ func (r *EmitResolver) CreateTypeOfExpression(emitContext *printer.EmitContext,
  	return requestNodeBuilder.SerializeTypeForExpression(expression, enclosingDeclaration, flags|nodebuilder.FlagsMultilineObjectLiterals, internalFlags, tracker)
  }
  
@@ -101,6 +101,19 @@ index 7bf3719e5..51794253e 100644
 +	if propertyType == nil {
 +		return nil
 +	}
++	// Emit the decoded property (Type/Encoded/Make/Fields) as a fully-expanded static
++	// type literal instead of the deferred mapped helper (e.g. `Struct.ReadonlySide<…,
++	// "Encoded">`) the node builder would otherwise reference — matching the struct-facade
++	// path. Keeps the generated namespace interfaces static and avoids re-instantiating
++	// the mapped helper at every use site. Non-object properties (service channels resolve
++	// to `never`, Make can be a void union) keep their direct node form.
++	// Expand only plain data objects. A callable type (e.g. the base's `mapFields`
++	// method, or `copy`) is also `TypeFlagsObject` but has no enumerable properties —
++	// expanding it would collapse the call signatures to `{}`, so leave those to the
++	// node builder which preserves the signature.
++	if propertyType.flags&TypeFlagsObject != 0 && len(r.checker.getPropertiesOfType(propertyType)) > 0 {
++		return r.createTypeLiteralOfType(emitContext, propertyType, enclosingDeclaration, flags, internalFlags, tracker)
++	}
 +	requestNodeBuilder := NewNodeBuilder(r.checker, emitContext)
 +	return requestNodeBuilder.TypeToTypeNode(propertyType, enclosingDeclaration, flags|nodebuilder.FlagsMultilineObjectLiterals|nodebuilder.FlagsUseFullyQualifiedType, internalFlags, tracker)
 +}
@@ -143,7 +156,11 @@ index 7bf3719e5..51794253e 100644
 +	// otherwise reference. This keeps the generated `interface X { … }` static and avoids
 +	// re-instantiating the mapped helper at every use site. Non-object properties (the
 +	// service channels resolve to `never`) keep their direct node form.
-+	if propertyType.flags&TypeFlagsObject != 0 {
++	// Expand only plain data objects. A callable type (e.g. the base's `mapFields`
++	// method, or `copy`) is also `TypeFlagsObject` but has no enumerable properties —
++	// expanding it would collapse the call signatures to `{}`, so leave those to the
++	// node builder which preserves the signature.
++	if propertyType.flags&TypeFlagsObject != 0 && len(r.checker.getPropertiesOfType(propertyType)) > 0 {
 +		return r.createTypeLiteralOfType(emitContext, propertyType, enclosingDeclaration, flags, internalFlags, tracker)
 +	}
 +	structNodeBuilder := NewNodeBuilder(r.checker, emitContext)

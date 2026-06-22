@@ -1,5 +1,5 @@
 diff --git a/internal/transformers/declarations/transform.go b/internal/transformers/declarations/transform.go
-index b6596e0d7..e396e08e3 100644
+index b6596e0d7..be48e2eb8 100644
 --- a/internal/transformers/declarations/transform.go
 +++ b/internal/transformers/declarations/transform.go
 @@ -351,6 +351,7 @@ func (tx *DeclarationTransformer) transformSourceFile(node *ast.SourceFile) *ast
@@ -10,7 +10,7 @@ index b6596e0d7..e396e08e3 100644
  	combinedStatements.Loc = statements.Loc // setTextRange
  	if ast.IsExternalOrCommonJSModule(node) {
  		if ast.IsInJSFile(node.AsNode()) {
-@@ -2277,6 +2278,1160 @@ func (tx *DeclarationTransformer) transformEnumDeclaration(input *ast.EnumDeclar
+@@ -2277,6 +2278,1171 @@ func (tx *DeclarationTransformer) transformEnumDeclaration(input *ast.EnumDeclar
  	)
  }
  
@@ -532,14 +532,25 @@ index b6596e0d7..e396e08e3 100644
 +// constructors. Opaque family (incl. requests) -> OpaqueFacade; class family -> OpaqueClassFacade;
 +// error family -> OpaqueErrorFacadeClass.
 +func getEffectSchemaCtorFacadeName(expression *ast.Node) string {
-+	if !ast.IsPropertyAccessExpression(expression) || expression.Name() == nil || expression.Expression() == nil {
++	// The heritage constructor is either a namespaced access (`S.Class(...)` /
++	// `Schema.Opaque(...)`) or a bare named import (`import { Class } from
++	// "effect-app/Schema"` → `class X extends Class<X>(...)`). Both forms name the
++	// same effect-app schema constructors; match on the constructor name in either
++	// shape (consistent with the namespace form trusting the `S`/`Schema` alias).
++	var ctorName string
++	switch {
++	case ast.IsPropertyAccessExpression(expression) && expression.Name() != nil && expression.Expression() != nil:
++		left := expression.Expression()
++		if !ast.IsIdentifier(left) || (left.Text() != "S" && left.Text() != "Schema") {
++			return ""
++		}
++		ctorName = expression.Name().Text()
++	case ast.IsIdentifier(expression):
++		ctorName = expression.Text()
++	default:
 +		return ""
 +	}
-+	left := expression.Expression()
-+	if !ast.IsIdentifier(left) || (left.Text() != "S" && left.Text() != "Schema") {
-+		return ""
-+	}
-+	switch expression.Name().Text() {
++	switch ctorName {
 +	case "Opaque", "OpaqueFacade":
 +		return "OpaqueFacade"
 +	case "Class", "TaggedClass":
