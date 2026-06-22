@@ -1,5 +1,5 @@
 diff --git a/internal/transformers/declarations/transform.go b/internal/transformers/declarations/transform.go
-index b6596e0d7..5bec4b75b 100644
+index b6596e0d7..2c6066b86 100644
 --- a/internal/transformers/declarations/transform.go
 +++ b/internal/transformers/declarations/transform.go
 @@ -351,6 +351,7 @@ func (tx *DeclarationTransformer) transformSourceFile(node *ast.SourceFile) *ast
@@ -10,7 +10,7 @@ index b6596e0d7..5bec4b75b 100644
  	combinedStatements.Loc = statements.Loc // setTextRange
  	if ast.IsExternalOrCommonJSModule(node) {
  		if ast.IsInJSFile(node.AsNode()) {
-@@ -2277,6 +2278,1152 @@ func (tx *DeclarationTransformer) transformEnumDeclaration(input *ast.EnumDeclar
+@@ -2277,6 +2278,1168 @@ func (tx *DeclarationTransformer) transformEnumDeclaration(input *ast.EnumDeclar
  	)
  }
  
@@ -83,6 +83,7 @@ index b6596e0d7..5bec4b75b 100644
 +	}
 +
 +	changed := false
++	facetedStructNames := map[string]bool{}
 +	next := make([]*ast.Node, 0, len(statements.Nodes))
 +	for _, statement := range statements.Nodes {
 +		baseModelName := getEffectSchemaBaseModelName(statement)
@@ -184,6 +185,7 @@ index b6596e0d7..5bec4b75b 100644
 +
 +		if structName := getEffectSchemaStructVariableName(statement); structName != "" && structModelNames[structName] {
 +			if declarations := tx.createEffectSchemaStructDeclarations(statement, structName); declarations != nil {
++				facetedStructNames[structName] = true
 +				changed = true
 +				next = append(next, declarations...)
 +				continue
@@ -191,9 +193,15 @@ index b6596e0d7..5bec4b75b 100644
 +		}
 +
 +		if isEffectSchemaStructCompanionTypeAlias(statement, structModelNames) {
-+			// Dropped — replaced by the generated `interface X`.
-+			changed = true
-+			continue
++			if facetedStructNames[statement.Name().Text()] {
++				// Dropped — replaced by the generated `interface X` (or `type X`).
++				changed = true
++				continue
++			}
++			// Faceting bailed for this struct (e.g. the decoded `Type` did not
++			// materialize): keep the original `type X = typeof X.Type` so `X` stays a
++			// usable type. Dropping it without a replacement would leave `X` value-only
++			// and break cross-module type usage under faceted resolution.
 +		}
 +
 +		next = append(next, statement)
@@ -371,7 +379,7 @@ index b6596e0d7..5bec4b75b 100644
 +
 +func (tx *DeclarationTransformer) createEffectSchemaStructDeclarations(statement *ast.Node, modelName string) []*ast.Node {
 +	typeNode := tx.materializeEffectSchemaStructProperty(modelName, "Type")
-+	if typeNode == nil || !ast.IsTypeLiteralNode(typeNode) {
++	if typeNode == nil {
 +		return nil
 +	}
 +	namespace := tx.createEffectSchemaGeneratedStructNamespace(modelName, structHasExportModifier(statement))
@@ -390,8 +398,16 @@ index b6596e0d7..5bec4b75b 100644
 +	declarations := tx.Factory().NewNodeList([]*ast.Node{updatedDeclaration})
 +	declarationList := tx.Factory().UpdateVariableDeclarationList(statement.AsVariableStatement().DeclarationList.AsVariableDeclarationList(), declarations, statement.AsVariableStatement().DeclarationList.Flags)
 +	retypedConst := tx.Factory().UpdateVariableStatement(statement.AsVariableStatement(), statement.Modifiers(), declarationList)
-+	typeInterface := tx.Factory().NewInterfaceDeclaration(tx.effectSchemaStructModifiers(exported, false), tx.Factory().NewIdentifier(modelName), nil, nil, tx.Factory().NewNodeList(typeNode.AsTypeLiteralNode().Members.Nodes))
-+	return []*ast.Node{retypedConst, typeInterface, namespace}
++	var typeDeclaration *ast.Node
++	if ast.IsTypeLiteralNode(typeNode) {
++		typeDeclaration = tx.Factory().NewInterfaceDeclaration(tx.effectSchemaStructModifiers(exported, false), tx.Factory().NewIdentifier(modelName), nil, nil, tx.Factory().NewNodeList(typeNode.AsTypeLiteralNode().Members.Nodes))
++	} else {
++		// The decoded `Type` did not materialize as an object literal (e.g. a union,
++		// intersection or mapped type). Emit it as a type alias so `X` still names the
++		// decoded type, rather than dropping it (which would leave `X` value-only).
++		typeDeclaration = tx.Factory().NewTypeAliasDeclaration(tx.effectSchemaStructModifiers(exported, false), tx.Factory().NewIdentifier(modelName), nil, typeNode)
++	}
++	return []*ast.Node{retypedConst, typeDeclaration, namespace}
 +}
 +
 +type generatedTypeImport struct {
